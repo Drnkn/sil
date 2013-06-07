@@ -1,4 +1,4 @@
-package ru.vang.slowthsimageloader.utils;
+package ru.vang.slothsimageloader.utils;
 
 import android.annotation.TargetApi;
 import android.os.Build;

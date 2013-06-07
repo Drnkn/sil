@@ -1,4 +1,4 @@
-package ru.vang.slowthsimageloader.utils;
+package ru.vang.slothsimageloader.utils;
 
 import java.io.File;
 
@@ -18,12 +18,16 @@ public class StorageUtils {
 		return (long) stats.getBlockSize() * (long) stats.getAvailableBlocks();
 	}
 
+	//TODO check free space
 	public static String getDiskCacheDirPath(final Context context,
 			final String uniqueName) {
-		final String cachePath = Environment.MEDIA_MOUNTED.equals(Environment
-				.getExternalStorageState()) || !isExternalStorageRemovable() ? getExternalCacheDir(
-				context).getPath()
-				: context.getCacheDir().getPath();
+		final String cachePath;
+		if (Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())
+				|| !isExternalStorageRemovable()) {
+			cachePath = getExternalCacheDir(context).getPath();
+		} else {
+			cachePath = context.getCacheDir().getPath();
+		}
 
 		return new File(cachePath, uniqueName).getAbsolutePath();
 	}

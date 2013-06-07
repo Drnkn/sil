@@ -1,10 +1,7 @@
 package ru.vang.slothsimageloader;
 
 import java.io.BufferedInputStream;
-import java.io.FilterInputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.lang.ref.WeakReference;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -14,19 +11,14 @@ import java.util.WeakHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
-import ru.vang.slowthsimageloader.cache.DiskCache;
-import ru.vang.slowthsimageloader.cache.MemoryCache;
-import android.content.Context;
-import android.content.res.Resources;
+import ru.vang.slothsimageloader.cache.DiskCache;
+import ru.vang.slothsimageloader.cache.MemoryCache;
+import ru.vang.slothsimageloader.utils.FlushedInputStream;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
-import android.graphics.drawable.BitmapDrawable;
-import android.graphics.drawable.ColorDrawable;
-import android.graphics.drawable.Drawable;
-import android.graphics.drawable.TransitionDrawable;
 import android.os.Build;
 import android.os.Handler;
-import android.widget.ImageView;
+import android.view.View;
 
 public class SlothsImageLoader {
 	private final ExecutorService mExecutorService;
@@ -34,31 +26,39 @@ public class SlothsImageLoader {
 	private final DiskCache mDiskCache;
 	private CacheParams mCacheParams;
 	private final Handler mHandler = new Handler();
-	private Resources mResources;
 
-	private Map<ImageView, String> mImageViews = Collections
-			.synchronizedMap(new WeakHashMap<ImageView, String>());
+	private Map<View, String> mViews = Collections
+			.synchronizedMap(new WeakHashMap<View, String>());
 
-	public SlothsImageLoader(final Context context, final CacheParams cacheParams) {
+	public enum ImageSourceType {
+		MEMORY, DISK, NETWORK
+	}
+
+	public interface OnPostProcessListener {
+
+		public Bitmap onPostProcess(final Bitmap bitmap);
+
+	}
+
+	public SlothsImageLoader(final CacheParams cacheParams) {
 		HttpURLConnection.setFollowRedirects(true);
 		mCacheParams = cacheParams;
 		mExecutorService = Executors.newFixedThreadPool(cacheParams.threadNumber);
 		mDiskCache = DiskCache.open(cacheParams.cacheDirPath, cacheParams.diskCacheSize);
-		mResources = context.getResources();
 	}
 
-	public void loadImage(final ImageView imageView, final String imageSource) {
-		if (imageSource == null || isSameTaskExecuted(imageView, imageSource)) {
+	public void loadImage(final String source, final View view) {
+		if (isSameTaskExecuted(view, source)) {
 			return;
 		}
 
-		mImageViews.put(imageView, imageSource);
-		final Bitmap bitmap = sMemoryCache.getBitmapFromCache(imageSource);
+		mViews.put(view, source);
+		final Bitmap bitmap = sMemoryCache.getBitmapFromCache(source);
 		if (bitmap == null) {
-			imageView.setImageResource(mCacheParams.stubResId);
-			mExecutorService.submit(new LoadImageTask(imageView, imageSource));
+			mCacheParams.binder.displayStub(view, mCacheParams.stubResId);
+			mExecutorService.submit(new LoadImageTask(source, view));
 		} else {
-			imageView.setImageBitmap(bitmap);
+			mCacheParams.binder.displayImage(view, bitmap, ImageSourceType.MEMORY);
 		}
 	}
 
@@ -88,69 +88,51 @@ public class SlothsImageLoader {
 		MemoryCache.setCacheSize(cacheSize);
 	}
 
-	private boolean isImageViewBusy(final ImageView imageView, final String imageSource) {
-		final String value = mImageViews.get(imageView);
+	private boolean isViewBusy(final View view, final String source) {
+		final String value = mViews.get(view);
 
-		return value != null && !value.equals(imageSource) ? true : false;
+		return value != null && !value.equals(source);
 	}
 
-	private boolean isSameTaskExecuted(final ImageView imageView, final String imageSource) {
-		final String value = mImageViews.get(imageView);
-		if (value == null) {
-			return false;
-		}
+	private boolean isSameTaskExecuted(final View view, final String imageSource) {
+		final String value = mViews.get(view);
 
-		return value != null && value.equals(imageSource) ? true : false;
-	}
-
-	private static class FlushedInputStream extends FilterInputStream {
-		public FlushedInputStream(InputStream inputStream) {
-			super(inputStream);
-		}
-
-		@Override
-		public long skip(long n) throws IOException {
-			long totalBytesSkipped = 0L;
-			while (totalBytesSkipped < n) {
-				long bytesSkipped = in.skip(n - totalBytesSkipped);
-				if (bytesSkipped == 0L) {
-					final int readByte = read();
-					if (readByte < 0) {
-						break; // we reached EOF
-					} else {
-						bytesSkipped = 1; // we read one byte
-					}
-				}
-				totalBytesSkipped += bytesSkipped;
-			}
-			return totalBytesSkipped;
-		}
+		return value != null && value.equals(imageSource);
 	}
 
 	private class LoadImageTask implements Runnable {
 		private static final int BUFFER_SIZE = 8192;
-		private WeakReference<ImageView> mImageViewReference;
-		public String mUrl;
+		private View mView;
+		public String mSource;
 
-		public LoadImageTask(final ImageView imageView, final String url) {
-			mImageViewReference = new WeakReference<ImageView>(imageView);
-			mUrl = url;
+		public LoadImageTask(final String url, final View view) {
+			mSource = url;
+			mView = view;
+			;
 		}
 
 		@Override
 		public void run() {
-			if (isImageViewBusy(mImageViewReference.get(), mUrl)) {
+			if (isViewBusy(mView, mSource))
 				return;
+
+			ImageSourceType sourceType = ImageSourceType.DISK;
+			Bitmap bitmap = mDiskCache.getBitmapFromDisk(mSource);
+			if (bitmap == null) {
+				bitmap = loadBitmap(mSource);
+				sourceType = ImageSourceType.NETWORK;
 			}
 
-			Bitmap bitmap = mDiskCache.getBitmapFromDisk(mUrl);
-			if (bitmap == null) {
-				bitmap = loadBitmap(mUrl);
-			}
-			final ImageView imageView = mImageViewReference.get();
-			if (imageView != null && bitmap != null) {
-				saveBitmapToCache(mUrl, bitmap);
-				mHandler.post(new DisplayImageTask(imageView, bitmap, mUrl));
+			if (bitmap != null) {
+				if (mCacheParams.postProcess != null) {
+					bitmap = mCacheParams.postProcess.onPostProcess(bitmap);
+				}
+				saveBitmapToCache(mSource, bitmap);
+
+				if (isViewBusy(mView, mSource))
+					return;
+
+				mHandler.post(new DisplayImageTask(bitmap, mView, mSource, sourceType));
 			}
 		}
 
@@ -194,37 +176,25 @@ public class SlothsImageLoader {
 	}
 
 	private class DisplayImageTask implements Runnable {
-		private static final int FADING_DURATION = 200;
 
-		private ImageView mImageView;
+		private View mView;
 		private Bitmap mBitmap;
-		private String mUrl;
+		private String mSource;
+		private ImageSourceType mSourceType;
 
-		public DisplayImageTask(final ImageView imageView, final Bitmap bitmap,
-				final String url) {
-			mImageView = imageView;
+		public DisplayImageTask(final Bitmap bitmap, final View view,
+				final String source, final ImageSourceType sourceType) {
 			mBitmap = bitmap;
-			mUrl = url;
+			mView = view;
+			mSource = source;
 		}
 
 		@Override
 		public void run() {
-			if (isImageViewBusy(mImageView, mUrl)) {
+			if (isViewBusy(mView, mSource))
 				return;
-			}
-			if (mCacheParams.useFading) {
-				// We use transparent ColorDrawable instead of current image
-				// drawable because bitmaps in TransitionDrawable should be the
-				// same size
-				final TransitionDrawable transitionDrawable = new TransitionDrawable(
-						new Drawable[] { new ColorDrawable(android.R.color.transparent),
-								new BitmapDrawable(mResources, mBitmap) });
-				transitionDrawable.setCrossFadeEnabled(true);
-				mImageView.setImageDrawable(transitionDrawable);
-				transitionDrawable.startTransition(FADING_DURATION);
-			} else {
-				mImageView.setImageBitmap(mBitmap);
-			}
+
+			mCacheParams.binder.displayImage(mView, mBitmap, mSourceType);
 		}
 	}
 

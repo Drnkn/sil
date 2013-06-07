@@ -1,4 +1,4 @@
-package ru.vang.slowthsimageloader.cache;
+package ru.vang.slothsimageloader.cache;
 
 import android.graphics.Bitmap;
 import android.support.v4.util.LruCache;

@@ -1,6 +1,9 @@
 package ru.vang.slothsimageloader;
 
-import ru.vang.slowthsimageloader.utils.StorageUtils;
+import ru.vang.slothsimageloader.SlothsImageLoader.OnPostProcessListener;
+import ru.vang.slothsimageloader.binder.FadeImageViewBinder;
+import ru.vang.slothsimageloader.binder.ViewBinder;
+import ru.vang.slothsimageloader.utils.StorageUtils;
 import android.content.Context;
 
 public class CacheParams {
@@ -17,7 +20,8 @@ public class CacheParams {
 	public final int connectionTimeout;
 	public final int readTimeout;
 	public final int diskCacheSize;
-	public final boolean useFading;
+	public final ViewBinder binder;
+	public final OnPostProcessListener postProcess;
 
 	private CacheParams(final Builder builder) {
 		threadNumber = builder.threadNumber;
@@ -26,7 +30,12 @@ public class CacheParams {
 		connectionTimeout = builder.connectionTimeout;
 		readTimeout = builder.readTimeout;
 		diskCacheSize = builder.diskCacheSize;
-		useFading = builder.useFading;
+		binder = builder.binder;
+		postProcess = builder.postProcess;
+	}
+
+	public static CacheParams getDefaultParams(final Context context) {
+		return new Builder(context).build();
 	}
 
 	public static class Builder {
@@ -36,10 +45,12 @@ public class CacheParams {
 		private int connectionTimeout = DEFAULT_CONNECTION_TIMEOUT;
 		private int readTimeout = DEFAULT_READ_TIMEOUT;
 		private int diskCacheSize = DEFAULT_DISK_CACHE_SIZE;
-		private boolean useFading = true;
+		private ViewBinder binder;
+		private OnPostProcessListener postProcess = null;
 
 		public Builder(final Context context) {
 			cacheDirPath = StorageUtils.getDiskCacheDirPath(context, DEFAULT_CACHE_DIR);
+			binder = new FadeImageViewBinder(context);
 		}
 
 		public Builder setThreadNumber(final int threadNumber) {
@@ -77,8 +88,13 @@ public class CacheParams {
 			return this;
 		}
 
-		public Builder setUseFading(final boolean useFading) {
-			this.useFading = useFading;
+		public Builder setViewBinder(final ViewBinder binder) {
+			this.binder = binder;
+			return this;
+		}
+
+		public Builder setPostProcessListener(final OnPostProcessListener postProcess) {
+			this.postProcess = postProcess;
 			return this;
 		}
 
@@ -86,7 +102,6 @@ public class CacheParams {
 			final CacheParams params = new CacheParams(this);
 			return params;
 		}
-
 	}
 
 }

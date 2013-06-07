@@ -1,4 +1,4 @@
-package ru.vang.slowthsimageloader.cache;
+package ru.vang.slothsimageloader.cache;
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -8,8 +8,7 @@ import java.io.OutputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
-import ru.vang.slowthsimageloader.utils.StorageUtils;
-
+import ru.vang.slothsimageloader.utils.StorageUtils;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.CompressFormat;
 import android.graphics.BitmapFactory;
